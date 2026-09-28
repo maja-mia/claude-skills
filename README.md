@@ -70,3 +70,5 @@ install as above; edits load at the next session or on `/reload-plugins`.
 
 **Releasing:** bump `version` in `plugins/work-log/.claude-plugin/plugin.json` — users only receive
 changes when the version string changes.
+
+**Ideas:** planned improvements live in `docs/ideas/<plugin>.md`, each linked to a GitHub issue.

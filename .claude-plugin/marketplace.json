@@ -1,0 +1,14 @@
+{
+  "name": "cirql-one",
+  "description": "Internal Claude Code plugins for Cirql One",
+  "owner": {
+    "name": "Cirql One"
+  },
+  "plugins": [
+    {
+      "name": "work-log",
+      "source": "./plugins/work-log",
+      "description": "Per-day work log from your GitHub commits, for time tracking"
+    }
+  ]
+}

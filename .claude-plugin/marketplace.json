@@ -1,8 +1,8 @@
 {
-  "name": "cirql-one",
-  "description": "Internal Claude Code plugins for Cirql One",
+  "name": "isla-marketplace",
+  "description": "Isla's Marketplace: personal Claude Code plugins",
   "owner": {
-    "name": "Cirql One"
+    "name": "Isla Morrison"
   },
   "plugins": [
     {

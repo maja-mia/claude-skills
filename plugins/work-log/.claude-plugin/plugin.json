@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Per-day work log from your GitHub commits, for time tracking",
   "author": {
-    "name": "Cirql One"
+    "name": "Isla Morrison"
   },
   "keywords": ["time-tracking", "github", "work-log"]
 }

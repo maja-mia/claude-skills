@@ -12,11 +12,11 @@ If either date is missing or not a `YYYY-MM-DD` date, ask the user for the range
 anything (convert phrases like "last month" to explicit dates and confirm them).
 
 1. Create a working directory with `mktemp -d` and call it `WORKDIR`.
-2. Fetch the commits (read-only GitHub search as the `gh`-logged-in user, `cirql-one` repos only;
-   drop `--owner` only if the user asks for all their repositories):
+2. Fetch the commits (read-only GitHub search as the `gh`-logged-in user, across all their
+   repositories; add `--owner <org>` only if the user asks to limit the log to one organization):
 
    ```
-   python3 ${CLAUDE_SKILL_DIR}/scripts/work_log.py fetch $from $to --owner cirql-one --out WORKDIR/commits.json
+   python3 ${CLAUDE_SKILL_DIR}/scripts/work_log.py fetch $from $to --out WORKDIR/commits.json
    ```
 
    stdout is a digest: one `## YYYY-MM-DD` heading per day with commits, the repositories as

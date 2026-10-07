@@ -3,10 +3,8 @@ name: agent-doc-consistency-review
 description: Review Markdown documentation at a given path to check whether another AI agent can use it reliably as a guideline. Finds contradictions, ambiguity, missing context, and unclear or fake use cases, and checks code symbols the docs mention against the local code. Use when the user asks to review, audit, validate, or sanity-check .md docs, READMEs, library/module docs, design docs, or test-case files, especially docs written by or for agents.
 argument-hint: <file.md | folder>
 model: opus
-context: fork
-background: false
-allowed-tools: Read, Glob, Grep, Write
-disallowed-tools: Edit, Bash
+allowed-tools: Read, Write, Bash(find *), Bash(grep *), Bash(ls *), Bash(pwd)
+disallowed-tools: Edit
 ---
 
 # Agent doc consistency review
@@ -16,6 +14,29 @@ Session ID: `${CLAUDE_SESSION_ID}`
 Project root: `${CLAUDE_PROJECT_DIR}`
 
 You are reviewing documentation that another AI agent will later use as its **only** source of truth for a piece of functionality, for example a library consumed by a different module. That agent can't ask the author questions. Anything ambiguous, contradictory, or implied will be guessed wrong or will make it stall. Review with that reader in mind.
+
+## How to run
+
+- This skill runs inline in the user's session, so the user sees every step. Work through steps 1 to 6 in order.
+- Keep a run log as you go: one line for each of steps 1 to 4, using the format in the `Run log` section of the report template. Record anything that didn't go as expected (a tool error, a denied call, a fallback you used, a file you couldn't read) with the exact reason.
+- Step statuses in the run log mean exactly this:
+  - Step 1: `done` once the target is resolved and the file list is known. A stop in step 1 writes no report, so it never appears as anything else.
+  - Step 2: `done` if every target file was read in full; `partial` if at least one couldn't be read; `failed` if none could be read.
+  - Step 3: `done` if every planned search ran, whatever the results. `partial` only if at least one search couldn't run (a denied or failed tool); `failed` if none could run. Symbols classified as not verifiable don't make step 3 partial.
+  - Step 4: `done` or `not reached` only. It's reasoning, not tool use, so it can't be partial.
+- Use your own tools for everything they can do. Never ask the user for something a tool can get, such as a file listing or file contents.
+- Ask the user only when a step is genuinely ambiguous and no rule in this skill settles it. Ask one specific question, wait for the answer, record it in the run log, and continue.
+- If a tool call is denied (by a hook, a permission rule, or the user rejecting a prompt), don't retry it: the answer won't change. Record the tool, the command, and the reason given in the run log right away, mark the step `failed` or `partial`, and continue where possible. In step 1, stop instead (see step 1). The Write in step 6 isn't part of the run log: a denied or failed Write is handled in step 6, item 5.
+- If a tool fails for any other reason, retry once. If it fails again, record it in the run log, mark the step `failed` or `partial`, and continue with the remaining steps where possible. In step 1, stop instead (see step 1). Empty results are answers, not failures: an `ls` that reports "No such file or directory" during an existence check, a `grep` that finds nothing (exit code 1), and a `find` that prints nothing (exit code 0). Don't retry them or log them as failures. Real errors are exit code 2 from `grep` and any non-zero exit code from `find`; these follow the retry rule above.
+- Exception, for step 3 only: when the only errors from a `grep` or `find` are "Permission denied" on some subfolders, don't retry (the result won't change) and don't mark the step `partial`. Use whatever it printed, and note the unreadable folders in the run log line for that step. Step 3 explains how this affects a symbol's classification. In step 1, "Permission denied" stops the review instead (see step 1).
+
+### Shell rules
+
+Searching and listing go through the Bash tool, because the dedicated Glob and Grep tools may not be available. Bash is for reading only:
+- Use only `pwd`, `ls`, `find`, and `grep`.
+- One simple command per call, on a single line. No pipes (`|` outside quotes; inside a quoted `grep -E` pattern it's fine), redirects (`>`, `<`), command chaining (`;`, `&&`, `||`), subshells (`$(...)`, backticks), or variables.
+- Never use the `find` actions that change files or run commands: `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf`, `-fls`.
+- Quote every path in double quotes.
 
 ## Scope and permissions
 
@@ -32,10 +53,14 @@ The review covers **only** the target path: that one file, or the `.md` files in
 ## 1. Resolve the input
 
 - If the target is empty, stop and reply only: `Usage: pass a single Markdown file or a folder of Markdown files as the argument, e.g. docs/my-lib.md or docs/`.
-- Resolve the target to an absolute path. An absolute target is used as is. A relative target is resolved against the current directory first; if nothing exists there, against the project root shown at the top (when it was filled in). If nothing exists at the resolved path, say so and stop. Use the resolved absolute path for every file operation.
+- Resolve the target to an absolute path. An absolute target is used as is. A relative target is resolved against the current directory first (get it with `pwd`); if nothing exists there, against the project root shown at the top (when it was filled in). Check existence and type with `ls -ldL "<path>"` (`-L` reports what a symlink points to): output starting with `d` means a folder, output starting with `-` means a file. If nothing exists at the resolved path, say so and stop. Use the resolved absolute path for every file operation.
 - If the target is a single file, it must end in `.md`. If it doesn't, say so and stop.
-- If the target is a folder, use Glob with `**/*.md` under that folder only. Skip anything inside `node_modules`, `dist`, `build`, `.git`, or `doc-reviews`, and skip `CHANGELOG.md`. Review all remaining files **together as one documentation set**, because contradictions between files are the most important thing to catch.
+- If the target is a folder, list its Markdown files with this command (one line), and review only what it returns:
+  `find -H "<folder>" -type f -name '*.md' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.git/*' -not -path '*/doc-reviews/*' -not -name CHANGELOG.md`
+  Review all of them **together as one documentation set**, because contradictions between files are the most important thing to catch.
+- If the folder listing reports "Permission denied" on any folder inside the target, the file list may be incomplete. Don't retry. Stop and reply with every unreadable folder it reported. This is an input error: don't write a report.
 - If the folder contains no `.md` files to review, say so and stop.
+- A stop in this step is an input error: reply with the reason only, and don't write a report. This includes any tool call in this step (`pwd`, `ls`, `find`) that is denied, or still fails after the one allowed retry.
 
 ## 2. Read everything before judging
 
@@ -46,10 +71,11 @@ Read every target file in full before writing any findings. Build a picture of w
 When the target names concrete code symbols (functions, components, hooks, exports, props, config keys, file paths, CLI commands), check that each one exists and matches what the docs describe: name, parameters, defaults, and import path.
 
 How to search:
-- Use Grep and Glob on the local files. Start in the target's own folder, then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
-- Search code files only: exclude `*.md` from every Grep.
-- To check a file path that points to a Markdown file, use Glob to confirm it exists. Don't open it.
-- Check the files as they are on disk now, including uncommitted edits. Git history and remotes are out of scope: you have no shell, so don't try to reach them.
+- Search with `grep` through Bash, following the shell rules. Start in the target's own folder, then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
+- Search code files only. Every search uses this form (one line): `grep -rn --exclude='*.md' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
+- To find files by name, use `find -H` with the same `-not -path` exclusions as in step 1.
+- To check a file path that points to a Markdown file, use `ls "<path>"` to confirm it exists. Don't open it.
+- Check the files as they are on disk now, including uncommitted edits. Git history and remotes are out of scope: `git` isn't allowed, so don't try to reach them.
 
 Which symbols to check:
 - **Always:** every symbol used in a code example or an import statement.
@@ -59,6 +85,8 @@ Classify every checked symbol as exactly one of:
 - **verified**: it exists and matches the docs.
 - **contradicted**: it's missing or differs from the docs. Report each one as a Contradiction finding.
 - **not verifiable**: the code isn't available locally or the match is ambiguous. Don't guess.
+
+When a search finds nothing, decide between these two with one test: does the code the symbol should belong to exist locally (its module, file, or component folder)? If yes, the symbol is **contradicted**. If that code isn't in the project at all (for example, an external package or another service), it's **not verifiable**. If the search hit "Permission denied" on a subfolder, a symbol it found is classified as usual, but a symbol it didn't find is **not verifiable**, because it might be in the folder that couldn't be read.
 
 The three counts must add up to the total number of symbols checked.
 
@@ -99,7 +127,7 @@ Write the report in exactly this structure:
 Files reviewed: <list>
 
 ## Verdict
-<Agent-ready | Usable with fixes | Not agent-ready>. <1–2 sentences on the main reason.>
+<Agent-ready | Usable with fixes | Not agent-ready | Incomplete>. <1–2 sentences on the main reason.>
 
 ## Findings
 
@@ -120,6 +148,9 @@ No issues found on: <comma-separated axis names with no findings (Contradiction,
 | Use case | Real / Illustrative / Unclear | Complete example? | Where |
 |---|---|---|---|
 <one row per use case, or a single row: | none documented | – | – | – |>
+
+## Run log
+<one line for each of steps 1–4: "<step number>. <step name>: done | partial | failed | not reached — <what happened, with the exact reason for anything other than done>">
 ```
 
 Severity:
@@ -128,6 +159,7 @@ Severity:
 - **Minor:** wording or structure that slows down understanding without causing errors.
 
 Verdict (apply mechanically, no judgment):
+- **Incomplete** if any of steps 2, 3, or 4 is `partial`, `failed`, or `not reached` in the run log. This overrides the rules below, because the findings can't be trusted as complete.
 - **Not agent-ready** if there is at least one Critical finding.
 - **Usable with fixes** if there are Major findings but no Critical ones.
 - **Agent-ready** otherwise.
@@ -142,18 +174,23 @@ Rules for the report:
 - Don't report style nitpicks (tone, formatting preferences) unless they cause misreading.
 - If an axis has no issues, list it by its exact name in the `No issues found on` line rather than padding findings.
 
-## 6. Save the report to a file (mandatory, before replying)
+## 6. Save the report to a file (mandatory)
 
-The report must survive even if the reply back to the main conversation is lost.
+The report file is the record of the review, including how the run went. Always write it once step 1 has passed, even if a later step failed or you had to stop early. In that case, fill in what you have, mark the rest `not reached` in the run log, and use the `Incomplete` verdict.
 
 1. Build `<name>` from the target as typed (before resolving it): take its last path segment, drop a `.md` extension, and replace anything that isn't a letter, digit, `-`, or `_` with `-`. For example, `docs/my-lib.md` becomes `my-lib` and `docs/` becomes `docs`. If the result is empty or only dashes (for example, the target is `.`), use `root`.
 2. The report path is `${CLAUDE_PROJECT_DIR}/doc-reviews/agent-doc-consistency-review_<name>_${CLAUDE_SESSION_ID}.md`. If the session ID or project root at the top is empty or still shows a literal `${...}` placeholder, use `session` for the ID and `./doc-reviews/` relative to the current directory.
-3. Use Glob to check whether that path already exists (the same skill run twice in one session). If it does, insert `-2` before `.md`; if that exists too, try `-3`, and so on. Never overwrite an existing report.
-4. Use the Write tool to save the **full report** in the step 5 structure to the final path. Write creates the folder if needed. Do this **before** sending any reply.
-5. Then reply with only this short summary, not the full report:
-   - the report file path
-   - the verdict line
-   - counts of Critical / Major / Minor findings
-   - the titles of the Critical findings, one line each
-
-If the Write fails, say so explicitly and put the full report in the reply instead, so it isn't lost.
+3. Use `ls "<path>"` to check whether that path already exists (the same skill run twice in one session). If it does, insert `-2` before `.md`; if that exists too, try `-3`, and so on. Never overwrite an existing report.
+4. Write the report:
+   - **If the user's own instructions require confirmation before writing files:** first send a message that contains the **full report** in the step 5 structure and asks for confirmation, so the report is in the chat whatever happens next. Then wait. If the user confirms, write the file. If the user declines, reply that the report wasn't saved and stop. Don't ask again.
+   - **Otherwise:** write the file right away.
+   - Use the Write tool to save the full report to the final path. Write creates the folder if needed.
+5. End with exactly one of these replies:
+   - **Written without asking:** only this short summary, not the full report:
+     - the report file path
+     - the verdict line
+     - counts of Critical / Major / Minor findings
+     - the titles of the Critical findings, one line each
+     - every run-log line that isn't `done`
+   - **Written after confirmation:** only the report file path. The full report is already in the chat.
+   - **Write denied, or failed after the one retry allowed for non-denial errors:** say the report couldn't be saved and give the reason. If the full report isn't in the chat yet, include it in this reply so it isn't lost.

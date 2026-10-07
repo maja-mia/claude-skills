@@ -52,17 +52,33 @@ Limits to know:
 
 ## Development
 
-Run the tests (standard library only, no install):
+### Prerequisites
+
+| Script | Needs on your machine |
+| --- | --- |
+| `scripts/test.sh` | Docker with a running daemon, and network access on the first run (it pulls the Python images and installs git and coverage inside them). The repo must be a git checkout that has a `main` or `origin/main` branch. Nothing else: no Python, no packages. |
+| `scripts/validate-changes.sh` | `python3` 3.9+ (standard library only), `git`, and the Claude Code CLI v2.1.259 or later (needed for `claude plugin validate --json`). |
+| CI (GitHub Actions) | Nothing. The Ubuntu 24.04 runner has Docker preinstalled. |
+
+Installing Docker Desktop is all `scripts/test.sh` needs. `scripts/validate-changes.sh` also needs
+`python3`, `git` and `claude`, which Docker Desktop does not provide.
+
+### Running the checks
+
+Run everything CI runs (tests, 90% branch coverage, validation reports; on Python 3.13, and the
+tests again on 3.9). It runs in Docker, so no Python or packages need installing locally:
 
 ```sh
-python3 -m unittest discover -s plugins/work-log/skills/work-log/scripts
+./scripts/test.sh
 ```
 
-Validate the marketplace and plugin manifests:
+**Validation reports:** every plugin and skill that changed compared to `main` must carry a
+passing, current `validation-report.json` in its own folder, and CI fails without it. Write the
+reports locally (needs your own `claude` CLI; the script is not run in CI) and commit them with
+the change. Editing a plugin or skill afterwards makes its report stale, so rerun it:
 
 ```sh
-claude plugin validate .
-claude plugin validate ./plugins/work-log
+./scripts/validate-changes.sh
 ```
 
 Try local changes without pushing: `claude plugin marketplace add ./` from the repo root, then

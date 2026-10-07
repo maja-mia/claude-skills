@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Repository checks for the claude-skills marketplace.
 
+Used through scripts/test.sh (locally and in CI, inside Docker) and scripts/validate-changes.sh.
+
   plugins    Print the plugin directories listed in the marketplace, one per line (relative).
-  tests      Every component with Python code (each skill, plus ci/ itself) must have unittest
-             tests, and — unless --no-coverage — reach COVERAGE_THRESHOLD % branch coverage.
-             --no-coverage only runs the tests (used for the Python 3.9 compatibility stage).
-             Every plugin and skill changed compared to the base branch must also carry a
-             passing, current validation-report.json (see validation_reports.py).
+  tests      Run the unittest tests of every component (each skill, plus ci/ itself) with branch
+             coverage of at least COVERAGE_THRESHOLD %; a component with Python code but no
+             tests fails. Then check the validation reports: every plugin and skill changed
+             compared to the base branch needs a passing, current validation-report.json
+             (see validation_reports.py).
   validate   Local only, needs the `claude` CLI: run `claude plugin validate` on every plugin
              and skill changed compared to the base branch and write their reports.
 
-The base branch is --base, else origin/main, else main. Standard library only (coverage is
-invoked as a subprocess), so it also runs on Python 3.9. Locally, run validate through
-scripts/validate-changes.sh.
+The base branch is --base, else origin/main, else main. Standard library only (coverage runs
+as a subprocess); Python 3.9 is the version we test.
 """
 from __future__ import annotations
 
@@ -75,9 +76,8 @@ def components(repo: Path) -> List[Component]:
     return found
 
 
-def check_component(component: Component, run: Runner, with_coverage: bool,
-                    data_dir: Path) -> List[str]:
-    """Run one component's tests; return failure messages (empty when it passes)."""
+def check_component(component: Component, run: Runner, data_dir: Path) -> List[str]:
+    """Run a component's tests with branch coverage; return failure messages (none if it passes)."""
     if not component.source_files():
         print("no Python code, nothing to test")
         return []
@@ -86,16 +86,13 @@ def check_component(component: Component, run: Runner, with_coverage: bool,
     failures = []
     data_file = data_dir / (component.name.replace(":", "_") + ".coverage")
     for test_dir in component.test_dirs():
-        unittest_args = ["-m", "unittest", "discover", "-s", str(test_dir), "-p", TEST_PATTERN]
-        if with_coverage:
-            command = [sys.executable, "-m", "coverage", "run", "--append", "--branch",
-                       f"--data-file={data_file}", f"--source={component.path}",
-                       f"--omit=*/{TEST_PATTERN}", *unittest_args]
-        else:
-            command = [sys.executable, *unittest_args]
+        command = [sys.executable, "-m", "coverage", "run", "--append", "--branch",
+                   f"--data-file={data_file}", f"--source={component.path}",
+                   f"--omit=*/{TEST_PATTERN}",
+                   "-m", "unittest", "discover", "-s", str(test_dir), "-p", TEST_PATTERN]
         if run(command) != 0:
             failures.append(f"{component.name}: tests failed in {test_dir}")
-    if with_coverage and not failures:
+    if not failures:
         report = [sys.executable, "-m", "coverage", "report", f"--data-file={data_file}",
                   "--show-missing", f"--fail-under={COVERAGE_THRESHOLD}"]
         if run(report) != 0:
@@ -103,12 +100,12 @@ def check_component(component: Component, run: Runner, with_coverage: bool,
     return failures
 
 
-def cmd_tests(repo: Path, tools: Tools, with_coverage: bool, base: Optional[str]) -> List[str]:
+def cmd_tests(repo: Path, tools: Tools, base: Optional[str]) -> List[str]:
     failures: List[str] = []
     with tempfile.TemporaryDirectory() as data_dir:
         for component in components(repo):
             print(f"\n== {component.name} ==", flush=True)
-            failures += check_component(component, tools.run, with_coverage, Path(data_dir))
+            failures += check_component(component, tools.run, Path(data_dir))
     print("\n== validation reports ==", flush=True)
     return failures + reports.check_reports(repo, tools.git, base)
 
@@ -134,8 +131,7 @@ def main(argv: Optional[Sequence[str]] = None, tools: Tools = Tools()) -> int:
                                        "(default: origin/main, else main)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("plugins", help="list plugin directories")
-    tests = sub.add_parser("tests", help="run tests (with coverage by default) and check reports")
-    tests.add_argument("--no-coverage", action="store_true", help="only run the tests")
+    sub.add_parser("tests", help="run tests with coverage and check validation reports")
     sub.add_parser("validate", help="write validation reports for changed plugins and skills")
     args = parser.parse_args(argv)
     repo = Path(args.repo)
@@ -147,7 +143,7 @@ def main(argv: Optional[Sequence[str]] = None, tools: Tools = Tools()) -> int:
         if args.command == "validate":
             failures = cmd_validate(repo, tools, args.base)
         else:
-            failures = cmd_tests(repo, tools, not args.no_coverage, args.base)
+            failures = cmd_tests(repo, tools, args.base)
     except CheckError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -156,8 +152,7 @@ def main(argv: Optional[Sequence[str]] = None, tools: Tools = Tools()) -> int:
         return 1
     if args.command == "validate":
         return 0
-    mode = "tests" if args.no_coverage else f"tests + {COVERAGE_THRESHOLD}% branch coverage"
-    print(f"\n{mode} and validation reports: all passed")
+    print(f"\ntests + {COVERAGE_THRESHOLD}% branch coverage and validation reports: all passed")
     return 0
 
 

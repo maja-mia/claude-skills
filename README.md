@@ -8,7 +8,7 @@ for Cirql One. Private repo — only people with read access to it can install f
 Prerequisites on your machine:
 
 - Claude Code
-- `python3` 3.9 or newer
+- `python3` 3.9 (the version CI tests; newer ones should work too)
 - GitHub CLI, logged in and set up as git credential helper (Claude Code clones this private repo
   with your own git credentials and can't prompt for them):
 
@@ -52,34 +52,31 @@ Limits to know:
 
 ## Development
 
+Two scripts, both run from the repo root:
+
+- `./scripts/test.sh` runs the same checks as CI, in Docker, on Python 3.9. It runs the unit
+  tests of every skill and of `ci/`, enforces 90% branch coverage, and checks the validation
+  reports (below).
+- `./scripts/validate-changes.sh` writes the validation reports. It runs locally only.
+
 ### Prerequisites
 
-| Script | Needs on your machine |
-| --- | --- |
-| `scripts/test.sh` | Docker with a running daemon, and network access on the first run (it pulls the Python images and installs git and coverage inside them). The repo must be a git checkout that has a `main` or `origin/main` branch. Nothing else: no Python, no packages. |
-| `scripts/validate-changes.sh` | `python3` 3.9+ (standard library only), `git`, and the Claude Code CLI v2.1.259 or later (needed for `claude plugin validate --json`). |
-| CI (GitHub Actions) | Nothing. The Ubuntu 24.04 runner has Docker preinstalled. |
+- **`test.sh`:** Docker Desktop, running, which is all it needs: no Python, no packages. The first
+  run needs network access to pull the Python image. The repo must be a git checkout with a `main`
+  or `origin/main` branch.
+- **`validate-changes.sh`:** `python3` 3.9, `git` and the Claude Code CLI v2.1.259 or later.
+  Docker Desktop provides none of them.
+- **CI:** nothing. GitHub's Ubuntu 24.04 runner has Docker preinstalled.
 
-Installing Docker Desktop is all `scripts/test.sh` needs. `scripts/validate-changes.sh` also needs
-`python3`, `git` and `claude`, which Docker Desktop does not provide.
+### Validation reports
 
-### Running the checks
+Every plugin and skill that changed compared to `main` needs a `validation-report.json` in its own
+folder, and the report must have passed and be written after your last edit. CI fails on a missing,
+failed or stale report.
 
-Run everything CI runs (tests, 90% branch coverage, validation reports; on Python 3.13, and the
-tests again on 3.9). It runs in Docker, so no Python or packages need installing locally:
-
-```sh
-./scripts/test.sh
-```
-
-**Validation reports:** every plugin and skill that changed compared to `main` must carry a
-passing, current `validation-report.json` in its own folder, and CI fails without it. Write the
-reports locally (needs your own `claude` CLI; the script is not run in CI) and commit them with
-the change. Editing a plugin or skill afterwards makes its report stale, so rerun it:
-
-```sh
-./scripts/validate-changes.sh
-```
+`./scripts/validate-changes.sh` writes them: it runs `claude plugin validate` on each changed
+plugin and skill. Commit the reports with your change. Editing again makes them stale, so rerun
+the script. CI never runs `claude`; it only checks the reports.
 
 Try local changes without pushing: `claude plugin marketplace add ./` from the repo root, then
 install as above; edits load at the next session or on `/reload-plugins`.

@@ -46,34 +46,24 @@ class ComponentTests(unittest.TestCase):
     def test_without_python_code_there_is_nothing_to_test(self) -> None:
         run = FakeRun()
         with redirect_stdout(io.StringIO()) as out:
-            self.assertEqual(check_component(self.component("notes.md"), run, True, self.root), [])
+            self.assertEqual(check_component(self.component("notes.md"), run, self.root), [])
         self.assertIn("nothing to test", out.getvalue())
         self.assertEqual(run.commands, [])
 
     def test_python_code_without_tests_fails(self) -> None:
-        failures = check_component(self.component("a.py"), FakeRun(), True, self.root)
+        failures = check_component(self.component("a.py"), FakeRun(), self.root)
         self.assertEqual(failures, ["demo: has Python code but no test_*.py tests"])
-
-    def test_no_coverage_only_runs_unittest_per_test_directory(self) -> None:
-        run = FakeRun()
-        component = self.component("a.py", "test_a.py", "sub/test_b.py")
-        self.assertEqual(check_component(component, run, False, self.root), [])
-        self.assertEqual(run.commands, [
-            [sys.executable, "-m", "unittest", "discover", "-s", str(self.root), "-p", "test_*.py"],
-            [sys.executable, "-m", "unittest", "discover", "-s", str(self.root / "sub"),
-             "-p", "test_*.py"],
-        ])
 
     def test_failing_tests_are_reported_per_directory_and_skip_the_coverage_report(self) -> None:
         run = FakeRun(1, 0)
         component = self.component("a.py", "test_a.py", "sub/test_b.py")
-        failures = check_component(component, run, True, self.root)
+        failures = check_component(component, run, self.root)
         self.assertEqual(failures, [f"demo: tests failed in {self.root}"])
         self.assertEqual(len(run.commands), 2)  # no `coverage report`
 
     def test_coverage_runs_branch_coverage_and_enforces_the_threshold(self) -> None:
         run = FakeRun()
-        self.assertEqual(check_component(self.component("a.py", "test_a.py"), run, True, self.root), [])
+        self.assertEqual(check_component(self.component("a.py", "test_a.py"), run, self.root), [])
         measure, report = run.commands
         self.assertEqual(measure[1:5], ["-m", "coverage", "run", "--append"])
         self.assertIn("--branch", measure)
@@ -83,7 +73,7 @@ class ComponentTests(unittest.TestCase):
 
     def test_coverage_below_threshold_fails(self) -> None:
         run = FakeRun(0, 2)
-        failures = check_component(self.component("a.py", "test_a.py"), run, True, self.root)
+        failures = check_component(self.component("a.py", "test_a.py"), run, self.root)
         self.assertEqual(failures, [f"demo: branch coverage below {COVERAGE_THRESHOLD}%"])
 
     def test_run_command_returns_the_exit_code_and_echoes_the_command(self) -> None:
@@ -115,11 +105,6 @@ class MainTests(MarketplaceTestCase):
         code, out, _ = self.run_main("tests", tools=Tools(run=FakeRun()))
         self.assertEqual(code, 0)
         self.assertIn("tests + 90% branch coverage and validation reports: all passed", out)
-
-    def test_no_coverage_mode_is_named_in_the_summary(self) -> None:
-        code, out, _ = self.run_main("tests", "--no-coverage", tools=Tools(run=FakeRun()))
-        self.assertEqual(code, 0)
-        self.assertIn("tests and validation reports: all passed", out)
 
     def test_failing_unit_tests_fail_the_run(self) -> None:
         write(self.skill("one") / "scripts" / "tool.py")

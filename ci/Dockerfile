@@ -1,7 +1,6 @@
-# Toolbox for the repository checks: Python, git and coverage. The repo itself is mounted at
-# /repo when the container runs (see scripts/test.sh), never copied in.
-ARG PYTHON_VERSION=3.13
-FROM python:${PYTHON_VERSION}-slim
+# Toolbox for the repository checks (scripts/test.sh): Python 3.9, git and coverage. The repo is
+# mounted at /repo when the container runs, never copied in.
+FROM python:3.9-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

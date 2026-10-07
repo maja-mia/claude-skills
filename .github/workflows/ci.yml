@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# A new commit on a PR cancels that PR's run still in progress. Pushes to main have no head_ref,
+# so each gets its own group (the run id) and always runs to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     runs-on: ubuntu-24.04

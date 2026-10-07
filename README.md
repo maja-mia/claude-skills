@@ -1,7 +1,7 @@
 # claude-skills
 
-Internal [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugins/create-marketplace)
-for Cirql One. Private repo — only people with read access to it can install from it.
+Isla's Marketplace: my private [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugins/create-marketplace).
+Only people with read access to this repo can install from it.
 
 ## Install
 
@@ -20,12 +20,12 @@ Prerequisites on your machine:
 Then, in Claude Code:
 
 ```
-/plugin marketplace add cirql-one/claude-skills
-/plugin install work-log@cirql-one
+/plugin marketplace add maja-mia/claude-skills
+/plugin install work-log@isla-marketplace
 ```
 
-Updates: run `/plugin marketplace update cirql-one`, or turn on auto-update for the marketplace
-under **Marketplaces** in `/plugin`.
+Updates: run `/plugin marketplace update isla-marketplace`, or turn on auto-update for the
+marketplace under **Marketplaces** in `/plugin`.
 
 ## Plugins
 
@@ -39,7 +39,7 @@ each day plus that day's commits (time, repo, linked SHA, message).
 ```
 
 It writes `work-log-<from>_<to>.md` to your current directory. The commits come from GitHub
-commit search, read-only, for the logged-in `gh` user in `cirql-one` repositories.
+commit search, read-only, for the logged-in `gh` user.
 
 Limits to know:
 
@@ -84,4 +84,4 @@ install as above; edits load at the next session or on `/reload-plugins`.
 **Releasing:** bump `version` in `plugins/work-log/.claude-plugin/plugin.json` — users only receive
 changes when the version string changes.
 
-**Ideas:** planned improvements live in `docs/ideas/<plugin>.md`, each linked to a GitHub issue.
+**Ideas:** planned improvements live in `docs/ideas/<plugin>.md`.

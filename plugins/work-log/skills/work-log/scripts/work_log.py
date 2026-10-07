@@ -7,7 +7,7 @@ Two commands, used by the work-log skill:
           save them to a JSON file and print a per-day digest of commit subjects.
   render  Combine the saved commits with per-day summaries into a Markdown work log.
 
-Standard library only; requires Python 3.9+ and an authenticated `gh` CLI.
+Standard library only; tested on Python 3.9. Requires an authenticated `gh` CLI.
 """
 from __future__ import annotations
 

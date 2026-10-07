@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "kind": "plugin",
+  "name": "work-log",
+  "contentHash": "sha256:450d410571a233c4c65c470086bf7f821964877a5d2e030de1e3f334b3989d1e",
+  "success": true,
+  "results": [
+    {
+      "file": "plugins/work-log/.claude-plugin/plugin.json",
+      "type": "plugin",
+      "errors": [],
+      "warnings": [],
+      "notes": []
+    }
+  ]
+}

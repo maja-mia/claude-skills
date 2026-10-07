@@ -50,6 +50,24 @@ Limits to know:
   them as leave.
 - The summaries are written by Claude from commit messages only — review them before submitting.
 
+### doc-review
+
+Skills that review documentation. Install with `/plugin install doc-review@isla-marketplace`.
+
+#### agent-doc-consistency-review
+
+Checks whether another AI agent can rely on Markdown docs as its only source of truth. It looks for
+contradictions (inside the docs and against the local code), unclear wording, and use cases that
+can't be told apart from hypothetical ones.
+
+```
+/doc-review:agent-doc-consistency-review docs/my-lib.md
+```
+
+It takes one file or a folder and reviews only that path. The report is saved to `doc-reviews/` in
+the project root, and the verdict follows mechanically from the findings: any Critical finding
+means "Not agent-ready".
+
 ## Development
 
 Two scripts, both run from the repo root:

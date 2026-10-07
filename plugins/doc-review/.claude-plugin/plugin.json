@@ -1,0 +1,10 @@
+{
+  "name": "doc-review",
+  "displayName": "Doc review",
+  "version": "0.1.0",
+  "description": "Skills that review documentation, starting with a consistency review for AI-agent readers",
+  "author": {
+    "name": "Isla Morrison"
+  },
+  "keywords": ["documentation", "review", "agents"]
+}

@@ -9,6 +9,11 @@
       "name": "work-log",
       "source": "./plugins/work-log",
       "description": "Per-day work log from your GitHub commits, for time tracking"
+    },
+    {
+      "name": "doc-review",
+      "source": "./plugins/doc-review",
+      "description": "Skills that review documentation, starting with a consistency review for AI-agent readers"
     }
   ]
 }

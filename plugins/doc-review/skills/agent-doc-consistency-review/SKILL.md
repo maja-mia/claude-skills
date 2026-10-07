@@ -17,7 +17,7 @@ You are reviewing documentation that another AI agent will later use as its **on
 
 ## How to run
 
-- This skill runs inline in the user's session, so the user sees every step. Work through steps 1 to 6 in order.
+- This skill runs inline in the user's session, so the user sees every step. Work through steps 1 to 7 in order.
 - Keep a run log as you go: one line for each of steps 1 to 4, using the format in the `Run log` section of the report template. Record anything that didn't go as expected (a tool error, a denied call, a fallback you used, a file you couldn't read) with the exact reason.
 - Step statuses in the run log mean exactly this:
   - Step 1: `done` once every target is resolved and the file list is known. A stop in step 1 writes no report, so it never appears as anything else.
@@ -26,7 +26,7 @@ You are reviewing documentation that another AI agent will later use as its **on
   - Step 4: `done` or `not reached` only. It's reasoning, not tool use, so it can't be partial.
 - Use your own tools for everything they can do. Never ask the user for something a tool can get, such as a file listing or file contents.
 - Ask the user only when a step is genuinely ambiguous and no rule in this skill settles it. Ask one specific question, wait for the answer, record it in the run log, and continue.
-- If a tool call is denied (by a hook, a permission rule, or the user rejecting a prompt), don't retry it: the answer won't change. Record the tool, the command, and the reason given in the run log right away, mark the step `failed` or `partial`, and continue where possible. In step 1, stop instead (see step 1). The Write in step 6 isn't part of the run log: a denied or failed Write is handled in step 6, item 5.
+- If a tool call is denied (by a hook, a permission rule, or the user rejecting a prompt), don't retry it: the answer won't change. Record the tool, the command, and the reason given in the run log right away, mark the step `failed` or `partial`, and continue where possible. In step 1, stop instead (see step 1). The Write in step 7 isn't part of the run log: a denied or failed Write is handled in step 7, item 5.
 - If a tool fails for any other reason, retry once. If it fails again, record it in the run log, mark the step `failed` or `partial`, and continue with the remaining steps where possible. In step 1, stop instead (see step 1). Empty results are answers, not failures: an `ls` that reports "No such file or directory" during an existence check, a `grep` that finds nothing (exit code 1), and a `find` that prints nothing (exit code 0). Don't retry them or log them as failures. Real errors are exit code 2 from `grep` and any non-zero exit code from `find`; these follow the retry rule above.
 - Exception, for step 3 only: when the only errors from a `grep` or `find` are "Permission denied" on some subfolders, don't retry (the result won't change) and don't mark the step `partial`. Use whatever it printed, and note the unreadable folders in the run log line for that step. Step 3 explains how this affects a symbol's classification. In step 1, "Permission denied" stops the review instead (see step 1).
 
@@ -47,8 +47,8 @@ The review covers **only** the target paths, meaning the paths in the arguments:
 - If a target depends on a document outside all the target paths and can't be understood without it, report that dependency as a Clarity finding in the target file, at the place where the link or reference appears.
 - Reading outside the target paths is allowed in exactly two cases:
   1. Code lookups in step 3. That code is evidence for checking the targets' claims. Never report problems in the code itself.
-  2. The existence check for the report file in step 6.
-- Never edit, create, or delete any file except the single report file written in step 6.
+  2. The existence check for the report file in step 7.
+- Never edit, create, or delete any file except the single report file written in step 7.
 
 ## 1. Resolve the input
 
@@ -73,11 +73,21 @@ When the target files name concrete code symbols (functions, components, hooks, 
 
 How to search:
 - Search with `grep` through Bash, following the shell rules. Start in the folder of each target (for a file target, its parent folder), then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
-- Search code files only. Every search uses this form (one line): `grep -rn --exclude='*.md' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
+- Search code files only. Every search of the project's own code uses this form (one line): `grep -rn --exclude='*.md' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
 - To find files by name, use `find -H` with the same `-not -path` exclusions as in step 1.
+- Symbols from an external package are checked in the installed package, never in compiled code. A symbol is from an external package when the docs import it from a package name, unless that name is the project's own: the `name` in the `package.json` at the project root, or a path alias: a `paths` entry in `tsconfig.json` or in any file it lists under `references` or `extends`, or `resolve.alias` in the Vite config if there is one (read these with Read). Those are project code; search them as usual.
+  1. Check that `<project root>/node_modules/<package>` exists with `ls -ldL "<project root>/node_modules/<package>"` (a scoped package is `@scope/name`). If it doesn't, every symbol from that package is **not verifiable**, and you record "`<package>` isn't installed" as the reason.
+  2. If it exists, look for its type declarations with `find -H "<project root>/node_modules/<package>" -type f -name '*.d.ts'`. Don't use the `--exclude-dir=node_modules` or `-not -path '*/node_modules/*'` filters here, because they would hide everything. If it prints nothing, check that the folder `<project root>/node_modules/@types/<name>` exists with `ls -ldL` (for a scoped package `@scope/name`, the folder is `@types/scope__name`). Only if it exists, run the same `find` on it and use that folder as the package folder from here on. If that folder doesn't exist, or neither folder has any `.d.ts` file, every symbol from the package is **not verifiable**, with the reason "`<package>` ships no type declarations".
+  3. Search the declarations with `grep -rn --include='*.d.ts' '<pattern>' "<package folder>"`.
+  4. Type declarations settle a symbol's existence, import path, props, parameters, and types. They don't settle runtime behaviour, so a claim about behaviour is **not verifiable**.
+  5. Stay inside that one package folder. A symbol the search doesn't find in the declarations is **not verifiable**, with the reason "not found in `<package>@<version>` declarations": declarations can take types from other packages, so a miss proves nothing. A symbol from an external package is **contradicted** only when it's found and a claim the docs make about it (import path, props, parameters, types) differs from the declarations.
+  6. Read `package.json` in the package folder for its `version`, and give it in the symbol's Evidence (see the `Symbols checked` rules). It's the installed version, not the range the docs support. When the declarations came from the `@types` folder, the version is that folder's, and the label is `@types/<name>@<version>` instead of `<package>@<version>`.
+  7. Apply this to every external package the docs use, the same way, whatever the package is. Never read anything else in `node_modules`.
 - To check a claim beyond existence and name (import path, shape, return value, props, parameters, defaults, behaviour), open the code file with Read at the lines around the grep match. If reading the code doesn't settle a claim, that claim counts as not verifiable; the symbol's category then follows the precedence rule below.
 - To check a file path that points to a Markdown file, use `ls "<path>"` to confirm it exists. Don't open it.
 - Check the files as they are on disk now, including uncommitted edits. Git history and remotes are out of scope: `git` isn't allowed, so don't try to reach them.
+
+A symbol is a name the docs say exists in code, because they show where it comes from: an import line, or prose that names it as code in this project or in an external package. A name the docs define themselves for the reader isn't a symbol, so don't check or count it. This covers a placeholder (such as a variable in an example standing for the reader's own value) and a helper the docs define in an example. A name with no import line that the docs neither define nor say exists in code (for example a hook used in an example with no import and no placeholder comment) isn't counted either. Report one Clarity finding in step 4 that lists every such name and every location where it appears: the docs don't say whether each is a placeholder or where it comes from. Don't decide this from search results.
 
 Which symbols to check:
 - **Always:** every symbol used in a code example or an import statement.
@@ -85,12 +95,12 @@ Which symbols to check:
 
 Classify every checked symbol as exactly one of:
 - **verified**: it exists, and every claim the docs make about it matches the code.
-- **contradicted**: any claim the docs make about it (existence, name, import path, shape, return value, props, parameters, defaults, or behaviour) differs from the code. Report each contradicted symbol as one Critical Contradiction finding, listing every contradicting claim and every location in that one finding.
+- **contradicted**: any claim the docs make about it (existence, name, import path, shape, return value, props, parameters, defaults, or behaviour) differs from the code (for an external package's symbol, only the claims the `node_modules` rule says can be contradicted), or two statements in the docs about it conflict and the code settles which one is right. Report each contradicted symbol as one Critical Contradiction finding, listing every contradicting claim and every location in that one finding. Put the symbol's name in backticks in the finding's title.
 - **not verifiable**: the code isn't available locally, the match is ambiguous, or reading the code doesn't settle a claim. Don't guess.
 
-For a symbol the search found, if different claims about it lead to different categories, contradicted wins over not verifiable, and not verifiable wins over verified. A symbol the search didn't find is classified only by the test below.
+For a symbol the search found, if different claims about it lead to different categories, contradicted wins over not verifiable, and not verifiable wins over verified. A symbol the search didn't find is classified only by the test below, or, for an external package's symbol, by the `node_modules` rule.
 
-When a search finds nothing, decide between these two with one test: does the code the symbol should belong to exist locally (its module, file, or component folder)? If yes, the symbol is **contradicted**. If that code isn't in the project at all (for example, an external package or another service), it's **not verifiable**. If the search hit "Permission denied" on a subfolder, a symbol it found is classified as usual, but a symbol it didn't find is **not verifiable**, because it might be in the folder that couldn't be read.
+When a search finds nothing, decide between these two with one test: does the code the symbol should belong to exist locally (its module, file, or component folder)? If yes, the symbol is **contradicted**. If that code isn't in the project at all (for example, an external package that isn't installed, or another service), it's **not verifiable**. For a symbol from an external package, don't use this test: the `node_modules` rule above applies: a miss there is always **not verifiable**. If the search hit "Permission denied" on a subfolder, a symbol it found is classified as usual, but a symbol it didn't find is **not verifiable**, because it might be in the folder that couldn't be read.
 
 The three counts must add up to the total number of symbols checked.
 
@@ -104,7 +114,7 @@ A contradiction means two statements can't both be true at once. A statement tha
 - Contradicted symbols from step 3.
 - Outdated statements that conflict with current ones.
 
-Report each problem once. If step 3 already counted a symbol as contradicted, that one finding covers every location where the docs get it wrong, including conflicts between docs: don't add a second finding for it here.
+Report each problem once. If step 3 already counted a symbol as contradicted, that one finding covers every location where the docs get it wrong, including conflicts between docs that the code settles: don't add a second finding for it here. A claim about a symbol that differs from the code is never a Clarity finding on its own: it goes into that symbol's Critical finding. This includes a description the docs present as complete, or that is false for some input (for example a list of steps that leaves out a step the code performs, so a stated outcome is wrong in some case). A description that is only less detailed than the code, and still true for every input, is not a contradiction: report it under Clarity.
 
 ### B. Clarity for an agent
 - Terms, acronyms, or internal names used without a definition.
@@ -114,7 +124,7 @@ Report each problem once. If step 3 already counted a symbol as contradicted, th
 - References such as "above", "the previous section", "the old way", or "like before" that are ambiguous or point to nothing.
 - Pronouns or phrases where it's unclear what they refer to.
 - Dependencies on documents outside the target paths (see Scope).
-- Code examples that are incomplete in a way that matters: missing imports, unknown variables, `...` hiding essential parts, placeholder values not marked as placeholders.
+- Code examples that are incomplete in a way that matters: missing imports, unknown variables, `...` hiding essential parts, placeholder values not marked as placeholders. Names the docs use without an import or a definition are reported once, in the single finding that step 3 describes: don't list them again here.
 
 ### C. Usability as a guideline
 This is the axis that matters most. The typical failure is an agent that reads the docs and still can't tell **what a real use case is**.
@@ -156,7 +166,12 @@ No issues found on: <comma-separated axis names with no findings (Contradiction,
 ## Use-case inventory
 | Use case | Real / Illustrative / Unclear | Complete example? | Where |
 |---|---|---|---|
-<one row per use case, with "Complete example?" as Yes, No, or Partial (<what's missing>); or a single row: | none documented | – | – | – |>
+<one row per use case; or a single row: | none documented | – | – | – |>
+
+## Symbols checked
+| Symbol | Status | Evidence |
+|---|---|---|
+<one row per checked symbol, contradicted first, then not verifiable, then verified; or a single row: | none | – | – |>
 
 ## Run log
 <one line for each of steps 1–4: "<step number>. <step name>: done | partial | failed | not reached — <what happened, with the exact reason for anything other than done>">
@@ -173,6 +188,17 @@ Verdict (apply mechanically, no judgment):
 - **Usable with fixes** if there are Major findings but no Critical ones.
 - **Agent-ready** otherwise.
 
+Rules for the inventory:
+- Each cell holds exactly one value, and the "Real / Illustrative / Unclear" cell is exactly one of those three words. "Complete example?" is exactly `Yes`, `No`, or `Partial (<what's missing>)`; only `Partial` has a note. If one use case is partly real and partly illustrative, or has examples of different completeness, split it into one row per part.
+- Every row with `No` or `Partial` must be covered by a finding whose **Where** points to that row's section.
+
+Rules for the `Symbols checked` table:
+- One row per symbol counted in the `Code verification` line, so the rows add up to the same total and to the same three counts.
+- **Status** is exactly `verified`, `contradicted`, or `not verifiable`.
+- **Evidence** is, for `verified`, the `file:line` of the code that settles it, followed for an external package's symbol by `<package>@<installed version>`; for `contradicted`, the exact title of the one Critical finding that covers it; for `not verifiable`, exactly one of these reasons:
+  - For an external package's symbol: "`<package>` isn't installed"; "`<package>` ships no type declarations"; "not found in `<package>@<version>` declarations" (a symbol the declarations don't contain, which may be a typo); "behaviour isn't visible in the type declarations" (a claim the types can't settle). Keep the last two apart.
+  - For a symbol in the project's own code: "ambiguous match" (more than one place in the project's code matches); "code doesn't settle the claim" (reading the code at the match doesn't settle it); "code isn't in this project" (for example another service); "search hit Permission denied on `<folder>`" (the symbol wasn't found, and the search couldn't read that folder).
+
 Rules for the report:
 - Show every file path in the report (title, Files reviewed, Where, inventory) relative to the project root (or the current directory if the project root wasn't filled in).
 - Order findings Critical, then Major, then Minor.
@@ -180,10 +206,22 @@ Rules for the report:
 - Quote the actual text. Every finding must point to a specific location inside one of the target paths.
 - Give fixes as concrete replacement text or concrete missing facts, not "clarify this".
 - Don't invent facts to fill gaps. If the right answer is unknown, put it under **Missing information** as a question for the author.
+- A **Fix** may state only what you verified in the target files or the code. If it depends on a question listed under **Missing information**, word that part conditionally ("if X, then …") or leave it out. Don't describe what a file contains if you only checked that it exists. When the fix is "add the missing fact", name the fact; don't write "add a sentence about it".
 - Don't report style nitpicks (tone, formatting preferences) unless they cause misreading.
 - If an axis has no issues, list it by its exact name in the `No issues found on` line rather than padding findings.
 
-## 6. Save the report to a file (mandatory)
+## 6. Check the report before saving
+
+Before step 7, go through this checklist once against the report you drafted. Fix every failed item in the report, then continue. Don't put the checklist or its results in the report, and don't add a line for it to the run log. If you stopped early, check only the parts the report has.
+
+1. The three counts add up to the total in the `Code verification` line, and the `Symbols checked` table has exactly that many rows.
+2. Every symbol used in a code example or import statement is in the table. Every name in the table is a symbol by the step 3 definition (not a placeholder or a helper the docs define).
+3. Every `contradicted` row names the exact title of one Critical finding, and that finding's title names the symbol in backticks. No symbol has a second finding.
+4. Every inventory cell follows the inventory rules, and every `No` or `Partial` row is covered by a finding.
+5. Every finding has all five fields, and each **Where** is inside the target paths. Findings are ordered Critical, Major, Minor.
+6. Every **Fix** states only verified facts (see the report rules), and the verdict follows the verdict rules from the run log and the findings.
+
+## 7. Save the report to a file (mandatory)
 
 The report file is the record of the review, including how the run went. Always write it once step 1 has passed, even if a later step failed or you had to stop early. In that case, fill in what you have, mark the rest `not reached` in the run log, and use the `Incomplete` verdict.
 

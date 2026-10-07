@@ -68,12 +68,13 @@ Read every target file in full before writing any findings. Build a picture of w
 
 ## 3. Verify claims against the code
 
-When the target names concrete code symbols (functions, components, hooks, exports, props, config keys, file paths, CLI commands), check that each one exists and matches what the docs describe: name, parameters, defaults, and import path.
+When the target names concrete code symbols (functions, components, hooks, exports, props, config keys, file paths, CLI commands), check that each one exists and matches what the docs describe: name, import path, shape, return value, props, parameters, defaults, and behaviour.
 
 How to search:
 - Search with `grep` through Bash, following the shell rules. Start in the target's own folder, then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
 - Search code files only. Every search uses this form (one line): `grep -rn --exclude='*.md' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
 - To find files by name, use `find -H` with the same `-not -path` exclusions as in step 1.
+- To check a claim beyond existence and name (import path, shape, return value, props, parameters, defaults, behaviour), open the code file with Read at the lines around the grep match. If reading the code doesn't settle a claim, that claim counts as not verifiable; the symbol's category then follows the precedence rule below.
 - To check a file path that points to a Markdown file, use `ls "<path>"` to confirm it exists. Don't open it.
 - Check the files as they are on disk now, including uncommitted edits. Git history and remotes are out of scope: `git` isn't allowed, so don't try to reach them.
 
@@ -82,9 +83,11 @@ Which symbols to check:
 - **Then:** up to 10 more symbols named only in prose. Prefer ones the docs describe as public API, required, or default behaviour.
 
 Classify every checked symbol as exactly one of:
-- **verified**: it exists and matches the docs.
-- **contradicted**: it's missing or differs from the docs. Report each one as a Contradiction finding.
-- **not verifiable**: the code isn't available locally or the match is ambiguous. Don't guess.
+- **verified**: it exists, and every claim the docs make about it matches the code.
+- **contradicted**: any claim the docs make about it (existence, name, import path, shape, return value, props, parameters, defaults, or behaviour) differs from the code. Report each contradicted symbol as one Critical Contradiction finding, listing every contradicting claim and every location in that one finding.
+- **not verifiable**: the code isn't available locally, the match is ambiguous, or reading the code doesn't settle a claim. Don't guess.
+
+For a symbol the search found, if different claims about it lead to different categories, contradicted wins over not verifiable, and not verifiable wins over verified. A symbol the search didn't find is classified only by the test below.
 
 When a search finds nothing, decide between these two with one test: does the code the symbol should belong to exist locally (its module, file, or component folder)? If yes, the symbol is **contradicted**. If that code isn't in the project at all (for example, an external package or another service), it's **not verifiable**. If the search hit "Permission denied" on a subfolder, a symbol it found is classified as usual, but a symbol it didn't find is **not verifiable**, because it might be in the folder that couldn't be read.
 
@@ -93,13 +96,18 @@ The three counts must add up to the total number of symbols checked.
 ## 4. Review on three axes
 
 ### A. Contradictions
-- Statements that conflict within a file or across target files: different defaults, required vs optional, allowed vs forbidden, different names for the same thing, different behaviour for the same input.
+A contradiction means two statements can't both be true at once. A statement that's only less detailed than another, but compatible with it, is not a contradiction: report it under Clarity.
+- Statements that conflict within a file or across target files: different defaults, required vs optional, allowed vs forbidden, different behaviour for the same input.
+- Different spellings of the same code identifier (function, prop, config key, file path), for example `useBreadcrumbs` in one doc and `useBreadcrumb` in another.
 - Examples that contradict the prose next to them.
 - Contradicted symbols from step 3.
-- Outdated content mixed with current content without saying which is which.
+- Outdated statements that conflict with current ones.
+
+Report each problem once. If step 3 already counted a symbol as contradicted, that one finding covers every location where the docs get it wrong, including conflicts between docs: don't add a second finding for it here.
 
 ### B. Clarity for an agent
 - Terms, acronyms, or internal names used without a definition.
+- Different words for the same concept, for example "config" in one place and "settings" in another.
 - Vague words where the agent needs a rule: "usually", "should probably", "in most cases", "etc.", "and so on", "as needed", "appropriately".
 - Implicit knowledge: steps that assume the reader knows the project, the team's conventions, or context from a conversation that isn't written down.
 - References such as "above", "the previous section", "the old way", or "like before" that are ambiguous or point to nothing.
@@ -147,14 +155,14 @@ No issues found on: <comma-separated axis names with no findings (Contradiction,
 ## Use-case inventory
 | Use case | Real / Illustrative / Unclear | Complete example? | Where |
 |---|---|---|---|
-<one row per use case, or a single row: | none documented | – | – | – |>
+<one row per use case, with "Complete example?" as Yes, No, or Partial (<what's missing>); or a single row: | none documented | – | – | – |>
 
 ## Run log
 <one line for each of steps 1–4: "<step number>. <step name>: done | partial | failed | not reached — <what happened, with the exact reason for anything other than done>">
 ```
 
 Severity:
-- **Critical:** an agent would very likely write wrong code or pick the wrong use case. This includes contradictions about behaviour, contradicted symbols, every use case marked **Unclear** in the inventory, and docs that describe no use case at all.
+- **Critical:** an agent would very likely write wrong code or pick the wrong use case. This includes every Contradiction finding (as defined in 4A), every use case marked **Unclear** in the inventory, and docs that describe no use case at all.
 - **Major:** an agent would likely stall, guess, or need to read the source to proceed.
 - **Minor:** wording or structure that slows down understanding without causing errors.
 

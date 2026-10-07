@@ -62,11 +62,15 @@ can't be told apart from hypothetical ones.
 
 ```
 /doc-review:agent-doc-consistency-review docs/my-lib.md
+/doc-review:agent-doc-consistency-review docs/guides/ docs/api.md "docs/release notes/"
 ```
 
-It takes one file or a folder and reviews only that path. The report is saved to `doc-reviews/` in
-the project root, and the verdict follows mechanically from the findings: any Critical finding
-means "Not agent-ready".
+It takes one or more files or folders, separated by spaces (put a path with spaces in double
+quotes), and reviews only those paths, together as one documentation set, so contradictions between
+them are caught too. If any path is missing, isn't a `.md` file, or can't be read, it stops with a
+list of all the problems and writes no report. The report is saved to `doc-reviews/` in the project
+root, and the verdict follows mechanically from the findings: any Critical finding means "Not
+agent-ready".
 
 ## Development
 

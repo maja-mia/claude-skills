@@ -1,7 +1,7 @@
 ---
 name: agent-doc-consistency-review
-description: Review Markdown documentation at a given path to check whether another AI agent can use it reliably as a guideline. Finds contradictions, ambiguity, missing context, and unclear or fake use cases, and checks code symbols the docs mention against the local code. Use when the user asks to review, audit, validate, or sanity-check .md docs, READMEs, library/module docs, design docs, or test-case files, especially docs written by or for agents.
-argument-hint: <file.md | folder>
+description: Review Markdown documentation at one or more given paths to check whether another AI agent can use it reliably as a guideline. Finds contradictions, ambiguity, missing context, and unclear or fake use cases, and checks code symbols the docs mention against the local code. Use when the user asks to review, audit, validate, or sanity-check .md docs, READMEs, library/module docs, design docs, or test-case files, especially docs written by or for agents.
+argument-hint: <path> [<path> ...]
 model: opus
 allowed-tools: Read, Write, Bash(find *), Bash(grep *), Bash(ls *), Bash(pwd)
 disallowed-tools: Edit
@@ -9,7 +9,7 @@ disallowed-tools: Edit
 
 # Agent doc consistency review
 
-Target: `$ARGUMENTS`
+Targets, as typed: `$ARGUMENTS`
 Session ID: `${CLAUDE_SESSION_ID}`
 Project root: `${CLAUDE_PROJECT_DIR}`
 
@@ -20,7 +20,7 @@ You are reviewing documentation that another AI agent will later use as its **on
 - This skill runs inline in the user's session, so the user sees every step. Work through steps 1 to 6 in order.
 - Keep a run log as you go: one line for each of steps 1 to 4, using the format in the `Run log` section of the report template. Record anything that didn't go as expected (a tool error, a denied call, a fallback you used, a file you couldn't read) with the exact reason.
 - Step statuses in the run log mean exactly this:
-  - Step 1: `done` once the target is resolved and the file list is known. A stop in step 1 writes no report, so it never appears as anything else.
+  - Step 1: `done` once every target is resolved and the file list is known. A stop in step 1 writes no report, so it never appears as anything else.
   - Step 2: `done` if every target file was read in full; `partial` if at least one couldn't be read; `failed` if none could be read.
   - Step 3: `done` if every planned search ran, whatever the results. `partial` only if at least one search couldn't run (a denied or failed tool); `failed` if none could run. Symbols classified as not verifiable don't make step 3 partial.
   - Step 4: `done` or `not reached` only. It's reasoning, not tool use, so it can't be partial.
@@ -40,27 +40,28 @@ Searching and listing go through the Bash tool, because the dedicated Glob and G
 
 ## Scope and permissions
 
-The review covers **only** the target path: that one file, or the `.md` files inside that folder and its subfolders. Nothing else is reviewed.
+The review covers **only** the target paths, meaning the paths in the arguments: each target file, and the `.md` files inside each target folder and its subfolders. Nothing else is reviewed.
 
-- Every finding, quote, and **Where** location must be in a file inside the target path.
-- Never open, review, quote, or report on any other Markdown file, even when the target links to it or it sits in a neighbouring folder.
-- If the target depends on a document outside the path and can't be understood without it, report that dependency as a Clarity finding in the target file, at the place where the link or reference appears.
-- Reading outside the target path is allowed in exactly two cases:
-  1. Code lookups in step 3. That code is evidence for checking the target's claims. Never report problems in the code itself.
+- Every finding, quote, and **Where** location must be in a file inside one of the target paths.
+- Never open, review, quote, or report on any other Markdown file, even when a target links to it or it sits in a neighbouring folder.
+- If a target depends on a document outside all the target paths and can't be understood without it, report that dependency as a Clarity finding in the target file, at the place where the link or reference appears.
+- Reading outside the target paths is allowed in exactly two cases:
+  1. Code lookups in step 3. That code is evidence for checking the targets' claims. Never report problems in the code itself.
   2. The existence check for the report file in step 6.
 - Never edit, create, or delete any file except the single report file written in step 6.
 
 ## 1. Resolve the input
 
-- If the target is empty, stop and reply only: `Usage: pass a single Markdown file or a folder of Markdown files as the argument, e.g. docs/my-lib.md or docs/`.
-- Resolve the target to an absolute path. An absolute target is used as is. A relative target is resolved against the current directory first (get it with `pwd`); if nothing exists there, against the project root shown at the top (when it was filled in). Check existence and type with `ls -ldL "<path>"` (`-L` reports what a symlink points to): output starting with `d` means a folder, output starting with `-` means a file. If nothing exists at the resolved path, say so and stop. Use the resolved absolute path for every file operation.
-- If the target is a single file, it must end in `.md`. If it doesn't, say so and stop.
-- If the target is a folder, list its Markdown files with this command (one line), and review only what it returns:
+- If the arguments are empty, stop and reply only: `Usage: pass one or more Markdown files or folders as arguments, e.g. docs/my-lib.md docs/guides/. Put a path that contains spaces in double quotes.`
+- Split the arguments into paths on spaces; a double-quoted part stays one path, even if it contains spaces. Each path is a target. If the same path appears more than once, keep it once.
+- Resolve each target to an absolute path. An absolute target is used as is. A relative target is resolved against the current directory first (get it with `pwd`); if nothing exists there, against the project root shown at the top (when it was filled in). Check existence and type of each with `ls -ldL "<path>"` (`-L` reports what a symlink points to): output starting with `d` means a folder, output starting with `-` means a file. Use the resolved absolute path for every file operation.
+- For each folder target, list its Markdown files with this command (one line):
   `find -H "<folder>" -type f -name '*.md' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.git/*' -not -path '*/doc-reviews/*' -not -name CHANGELOG.md`
-  Review all of them **together as one documentation set**, because contradictions between files are the most important thing to catch.
-- If the folder listing reports "Permission denied" on any folder inside the target, the file list may be incomplete. Don't retry. Stop and reply with every unreadable folder it reported. This is an input error: don't write a report.
-- If the folder contains no `.md` files to review, say so and stop.
-- A stop in this step is an input error: reply with the reason only, and don't write a report. This includes any tool call in this step (`pwd`, `ls`, `find`) that is denied, or still fails after the one allowed retry.
+  If the listing reports "Permission denied" on any folder inside the target, the file list may be incomplete. Don't retry. Count the target as a problem and name every unreadable folder it reported.
+- Check every target before stopping, so the reply can list all problems at once. A target is a problem if it doesn't exist, if it is a single file that doesn't end in `.md`, if it is a folder with no `.md` files to review, or if its folder listing hit "Permission denied".
+- If there is at least one problem, stop and reply with every problem and its reason, and don't review the targets that were fine. This is an input error: don't write a report.
+- Otherwise, merge the files of all file targets and all folder listings into one list, with duplicates removed (a file named directly and also found in a folder, or in two overlapping folders, counts once). These are the **target files**. Review all of them **together as one documentation set**, because contradictions between files are the most important thing to catch, including contradictions between different targets.
+- A stop in this step is an input error: reply with the reasons only, and don't write a report. This includes any tool call in this step (`pwd`, `ls`, `find`) that is denied, or still fails after the one allowed retry.
 
 ## 2. Read everything before judging
 
@@ -68,10 +69,10 @@ Read every target file in full before writing any findings. Build a picture of w
 
 ## 3. Verify claims against the code
 
-When the target names concrete code symbols (functions, components, hooks, exports, props, config keys, file paths, CLI commands), check that each one exists and matches what the docs describe: name, import path, shape, return value, props, parameters, defaults, and behaviour.
+When the target files name concrete code symbols (functions, components, hooks, exports, props, config keys, file paths, CLI commands), check that each one exists and matches what the docs describe: name, import path, shape, return value, props, parameters, defaults, and behaviour.
 
 How to search:
-- Search with `grep` through Bash, following the shell rules. Start in the target's own folder, then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
+- Search with `grep` through Bash, following the shell rules. Start in the folder of each target (for a file target, its parent folder), then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
 - Search code files only. Every search uses this form (one line): `grep -rn --exclude='*.md' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
 - To find files by name, use `find -H` with the same `-not -path` exclusions as in step 1.
 - To check a claim beyond existence and name (import path, shape, return value, props, parameters, defaults, behaviour), open the code file with Read at the lines around the grep match. If reading the code doesn't settle a claim, that claim counts as not verifiable; the symbol's category then follows the precedence rule below.
@@ -98,7 +99,7 @@ The three counts must add up to the total number of symbols checked.
 ### A. Contradictions
 A contradiction means two statements can't both be true at once. A statement that's only less detailed than another, but compatible with it, is not a contradiction: report it under Clarity.
 - Statements that conflict within a file or across target files: different defaults, required vs optional, allowed vs forbidden, different behaviour for the same input.
-- Different spellings of the same code identifier (function, prop, config key, file path), for example `useBreadcrumbs` in one doc and `useBreadcrumb` in another.
+- Different spellings of the same code identifier (function, prop, config key, file path), for example `fetchItems` in one doc and `fetchItem` in another.
 - Examples that contradict the prose next to them.
 - Contradicted symbols from step 3.
 - Outdated statements that conflict with current ones.
@@ -112,7 +113,7 @@ Report each problem once. If step 3 already counted a symbol as contradicted, th
 - Implicit knowledge: steps that assume the reader knows the project, the team's conventions, or context from a conversation that isn't written down.
 - References such as "above", "the previous section", "the old way", or "like before" that are ambiguous or point to nothing.
 - Pronouns or phrases where it's unclear what they refer to.
-- Dependencies on documents outside the target path (see Scope).
+- Dependencies on documents outside the target paths (see Scope).
 - Code examples that are incomplete in a way that matters: missing imports, unknown variables, `...` hiding essential parts, placeholder values not marked as placeholders.
 
 ### C. Usability as a guideline
@@ -130,7 +131,7 @@ This is the axis that matters most. The typical failure is an agent that reads t
 Write the report in exactly this structure:
 
 ```
-# Agent doc consistency review: <target>
+# Agent doc consistency review: <targets, comma-separated>
 
 Files reviewed: <list>
 
@@ -176,7 +177,7 @@ Rules for the report:
 - Show every file path in the report (title, Files reviewed, Where, inventory) relative to the project root (or the current directory if the project root wasn't filled in).
 - Order findings Critical, then Major, then Minor.
 - For a contradiction, list every location involved under **Where**.
-- Quote the actual text. Every finding must point to a specific location inside the target path.
+- Quote the actual text. Every finding must point to a specific location inside one of the target paths.
 - Give fixes as concrete replacement text or concrete missing facts, not "clarify this".
 - Don't invent facts to fill gaps. If the right answer is unknown, put it under **Missing information** as a question for the author.
 - Don't report style nitpicks (tone, formatting preferences) unless they cause misreading.
@@ -186,7 +187,7 @@ Rules for the report:
 
 The report file is the record of the review, including how the run went. Always write it once step 1 has passed, even if a later step failed or you had to stop early. In that case, fill in what you have, mark the rest `not reached` in the run log, and use the `Incomplete` verdict.
 
-1. Build `<name>` from the target as typed (before resolving it): take its last path segment, drop a `.md` extension, and replace anything that isn't a letter, digit, `-`, or `_` with `-`. For example, `docs/my-lib.md` becomes `my-lib` and `docs/` becomes `docs`. If the result is empty or only dashes (for example, the target is `.`), use `root`.
+1. Build `<name>` from the first target as typed (before resolving it): take its last path segment, drop a `.md` extension, and replace anything that isn't a letter, digit, `-`, or `_` with `-`. For example, `docs/my-lib.md` becomes `my-lib` and `docs/` becomes `docs`. If the result is empty or only dashes (for example, the first target is `.`), use `root`. With more than one target, append `-plus-<N-1>`, where N is the number of targets: three targets starting with `docs/guides/` give `guides-plus-2`.
 2. The report path is `${CLAUDE_PROJECT_DIR}/doc-reviews/agent-doc-consistency-review_<name>_${CLAUDE_SESSION_ID}.md`. If the session ID or project root at the top is empty or still shows a literal `${...}` placeholder, use `session` for the ID and `./doc-reviews/` relative to the current directory.
 3. Use `ls "<path>"` to check whether that path already exists (the same skill run twice in one session). If it does, insert `-2` before `.md`; if that exists too, try `-3`, and so on. Never overwrite an existing report.
 4. Write the report:

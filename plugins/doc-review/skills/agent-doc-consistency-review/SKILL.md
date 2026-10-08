@@ -3,7 +3,7 @@ name: agent-doc-consistency-review
 description: Review Markdown documentation at one or more given paths to check whether another AI agent can use it reliably as a guideline. Finds contradictions, ambiguity, missing context, and unclear or fake use cases, and checks code symbols the docs mention against the local code. Use when the user asks to review, audit, validate, or sanity-check .md docs, READMEs, library/module docs, design docs, or test-case files, especially docs written by or for agents.
 argument-hint: <path> [<path> ...]
 model: opus
-allowed-tools: Read, Write, Bash(find *), Bash(grep *), Bash(ls *), Bash(pwd)
+allowed-tools: Read, Write, Agent, Bash(find *), Bash(grep *), Bash(ls *), Bash(pwd)
 disallowed-tools: Edit
 ---
 
@@ -147,6 +147,7 @@ Files reviewed: <list>
 
 ## Verdict
 <Agent-ready | Usable with fixes | Not agent-ready | Incomplete>. <1–2 sentences on the main reason.>
+Independent check: <done — N confirmed, N corrected, N removed, N unchecked | not done — reason | not needed — no Critical or Major findings>
 
 ## Findings
 
@@ -221,6 +222,20 @@ Before step 7, go through this checklist once against the report you drafted. Fi
 5. Every finding has all five fields, and each **Where** is inside the target paths. Findings are ordered Critical, Major, Minor.
 6. Every **Fix** states only verified facts (see the report rules), and the verdict follows the verdict rules from the run log and the findings.
 
+### Independent check of the findings
+
+When the checklist passes, have the `finding-verifier` agent (`doc-review:finding-verifier`) check every Critical and Major finding. If there are none, or the verdict is `Incomplete`, skip this and write `not needed — no Critical or Major findings` or `not done — verdict is Incomplete` on the `Independent check` line.
+
+1. Number the Critical and Major findings F1, F2, … in report order. Make one call to the agent with all of them in one task message. For each finding give: its number, severity, axis, title, Quote, Problem, Fix, and the line ranges to read, as `path:start-end`. Use the documentation ranges from its **Where** (the whole section when **Where** gives only a heading) and the code ranges you relied on in step 3. Give the facts only, not your reasoning, and don't tell it what answer you expect.
+2. The agent may run in the background and answer in a later turn. Don't write the report until its answer has arrived, or until you've decided it failed. If the user tells you to continue without it, use `not done — no answer received`.
+3. Apply its answers:
+   - `confirmed`: keep the finding.
+   - `overstated`: rewrite the finding with its `Corrected` wording or severity.
+   - `wrong`: remove the finding. If it was a contradicted symbol's finding, reclassify the symbol by the step 3 rules, then update the counts, the `Symbols checked` row, and the verdict.
+   - `unchecked`: keep the finding as it is.
+4. After applying the answers, go through checklist items 1, 3, 4, and 6 again for whatever changed. Then write the `Independent check` line, for example `done — 4 confirmed, 2 corrected, 1 removed, 0 unchecked`.
+5. If the call is denied, fails, or returns nothing usable, retry once at most, then continue without it and write `not done — <the exact reason>`. This never changes the verdict. Don't add a line for this check to the run log.
+
 ## 7. Save the report to a file (mandatory)
 
 The report file is the record of the review, including how the run went. Always write it once step 1 has passed, even if a later step failed or you had to stop early. In that case, fill in what you have, mark the rest `not reached` in the run log, and use the `Incomplete` verdict.
@@ -235,7 +250,7 @@ The report file is the record of the review, including how the run went. Always 
 5. End with exactly one of these replies:
    - **Written without asking:** only this short summary, not the full report:
      - the report file path
-     - the verdict line
+     - the verdict line and the `Independent check` line
      - counts of Critical / Major / Minor findings
      - the titles of the Critical findings, one line each
      - every run-log line that isn't `done`

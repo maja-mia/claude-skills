@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "skill",
   "name": "doc-review:agent-doc-consistency-review",
-  "contentHash": "sha256:7d2fc3b40289aaed38164f021ea773bda95d6e0790c18af5ac81624cbd8f380b",
+  "contentHash": "sha256:861cb4a17c9c889508715ebbfcdad90fdecdeb2cb2f6bb4b245cde391bbbae90",
   "success": true,
   "results": []
 }

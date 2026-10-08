@@ -72,6 +72,14 @@ list of all the problems and writes no report. The report is saved to `doc-revie
 root, and the verdict follows mechanically from the findings: any Critical finding means "Not
 agent-ready".
 
+Before saving, it asks a second agent, `finding-verifier` (Sonnet, read-only, started with
+`omitClaudeMd`, which needs Claude Code v2.1.271 or later), to re-check every Critical and Major
+finding against the lines it cites. Claude Code runs subagents in the background by default, so the
+answer can arrive late or not at all. To make the call block until the answer comes, set
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in your environment, for example in `~/.zshrc`. It also
+turns off background Bash commands. If no answer arrives, the report says `Independent check: not
+done` and is saved unverified.
+
 ## Development
 
 Two scripts, both run from the repo root:

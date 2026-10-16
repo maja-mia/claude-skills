@@ -56,7 +56,7 @@ Skills that review documentation. Install with `/plugin install doc-review@isla-
 
 #### agent-doc-consistency-review
 
-Checks whether another AI agent can rely on Markdown docs as its only source of truth. It looks for
+Checks whether another AI agent can rely on Markdown or MDX docs as its only source of truth. It looks for
 contradictions (inside the docs and against the local code), unclear wording, and use cases that
 can't be told apart from hypothetical ones.
 
@@ -67,7 +67,7 @@ can't be told apart from hypothetical ones.
 
 It takes one or more files or folders, separated by spaces (put a path with spaces in double
 quotes), and reviews only those paths, together as one documentation set, so contradictions between
-them are caught too. If any path is missing, isn't a `.md` file, or can't be read, it stops with a
+them are caught too. If any path is missing, isn't a `.md` or `.mdx` file, or can't be read, it stops with a
 list of all the problems and writes no report. The report is saved to `doc-reviews/` in the project
 root, and the verdict follows mechanically from the findings: any Critical finding means "Not
 agent-ready".

@@ -1,6 +1,6 @@
 ---
 name: agent-doc-consistency-review
-description: Review Markdown documentation at one or more given paths to check whether another AI agent can use it reliably as a guideline. Finds contradictions, ambiguity, missing context, and unclear or fake use cases, and checks code symbols the docs mention against the local code. Use when the user asks to review, audit, validate, or sanity-check .md docs, READMEs, library/module docs, design docs, or test-case files, especially docs written by or for agents.
+description: Review Markdown and MDX documentation at one or more given paths to check whether another AI agent can use it reliably as a guideline. Finds contradictions, ambiguity, missing context, and unclear or fake use cases, and checks code symbols the docs mention against the local code. Use when the user asks to review, audit, validate, or sanity-check .md or .mdx docs (including Storybook docs), READMEs, library/module docs, design docs, or test-case files, especially docs written by or for agents.
 argument-hint: <path> [<path> ...]
 model: opus
 allowed-tools: Read, Write, Agent, Bash(find *), Bash(grep *), Bash(ls *), Bash(pwd)
@@ -38,12 +38,22 @@ Searching and listing go through the Bash tool, because the dedicated Glob and G
 - Never use the `find` actions that change files or run commands: `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf`, `-fls`.
 - Quote every path in double quotes.
 
+## Review file types
+
+This section is the single definition of these terms. Wherever this skill says **review file**, `<review-file-name-filter>` or `<review-file-exclude-flags>`, it means exactly what is defined here, and nothing else. Never substitute your own idea of "documentation file" or "a file under review".
+
+- **review file**: a file whose name ends in `.md` or `.mdx`. No other extension counts.
+- `<review-file-name-filter>`: type this fragment into a `find` command exactly as written: `\( -name '*.md' -o -name '*.mdx' \)`
+- `<review-file-exclude-flags>`: type these flags into a `grep` command exactly as written: `--exclude='*.md' --exclude='*.mdx'`
+
+To change which files are reviewed, edit only this section, the usage message in step 1, and the `description` in the frontmatter.
+
 ## Scope and permissions
 
-The review covers **only** the target paths, meaning the paths in the arguments: each target file, and the `.md` files inside each target folder and its subfolders. Nothing else is reviewed.
+The review covers **only** the target paths, meaning the paths in the arguments: each target file, and the review files inside each target folder and its subfolders. Nothing else is reviewed.
 
 - Every finding, quote, and **Where** location must be in a file inside one of the target paths.
-- Never open, review, quote, or report on any other Markdown file, even when a target links to it or it sits in a neighbouring folder.
+- Never open, review, quote, or report on any other review file, even when a target links to it or it sits in a neighbouring folder.
 - If a target depends on a document outside all the target paths and can't be understood without it, report that dependency as a Clarity finding in the target file, at the place where the link or reference appears.
 - Reading outside the target paths is allowed in exactly two cases:
   1. Code lookups in step 3. That code is evidence for checking the targets' claims. Never report problems in the code itself.
@@ -52,13 +62,13 @@ The review covers **only** the target paths, meaning the paths in the arguments:
 
 ## 1. Resolve the input
 
-- If the arguments are empty, stop and reply only: `Usage: pass one or more Markdown files or folders as arguments, e.g. docs/my-lib.md docs/guides/. Put a path that contains spaces in double quotes.`
+- If the arguments are empty, stop and reply only: `Usage: pass one or more review files (.md or .mdx) or folders as arguments, e.g. docs/my-lib.md docs/guides/. Put a path that contains spaces in double quotes.`
 - Split the arguments into paths on spaces; a double-quoted part stays one path, even if it contains spaces. Each path is a target. If the same path appears more than once, keep it once.
 - Resolve each target to an absolute path. An absolute target is used as is. A relative target is resolved against the current directory first (get it with `pwd`); if nothing exists there, against the project root shown at the top (when it was filled in). Check existence and type of each with `ls -ldL "<path>"` (`-L` reports what a symlink points to): output starting with `d` means a folder, output starting with `-` means a file. Use the resolved absolute path for every file operation.
-- For each folder target, list its Markdown files with this command (one line):
-  `find -H "<folder>" -type f -name '*.md' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.git/*' -not -path '*/doc-reviews/*' -not -name CHANGELOG.md`
+- For each folder target, list its review files with this command (one line):
+  `find -H "<folder>" -type f <review-file-name-filter> -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.git/*' -not -path '*/doc-reviews/*' -not -name CHANGELOG.md`
   If the listing reports "Permission denied" on any folder inside the target, the file list may be incomplete. Don't retry. Count the target as a problem and name every unreadable folder it reported.
-- Check every target before stopping, so the reply can list all problems at once. A target is a problem if it doesn't exist, if it is a single file that doesn't end in `.md`, if it is a folder with no `.md` files to review, or if its folder listing hit "Permission denied".
+- Check every target before stopping, so the reply can list all problems at once. A target is a problem if it doesn't exist, if it is a single file that isn't a review file, if it is a folder with no review files, or if its folder listing hit "Permission denied".
 - If there is at least one problem, stop and reply with every problem and its reason, and don't review the targets that were fine. This is an input error: don't write a report.
 - Otherwise, merge the files of all file targets and all folder listings into one list, with duplicates removed (a file named directly and also found in a folder, or in two overlapping folders, counts once). These are the **target files**. Review all of them **together as one documentation set**, because contradictions between files are the most important thing to catch, including contradictions between different targets.
 - A stop in this step is an input error: reply with the reasons only, and don't write a report. This includes any tool call in this step (`pwd`, `ls`, `find`) that is denied, or still fails after the one allowed retry.
@@ -73,7 +83,7 @@ When the target files name concrete code symbols (functions, components, hooks, 
 
 How to search:
 - Search with `grep` through Bash, following the shell rules. Start in the folder of each target (for a file target, its parent folder), then widen to the whole project root shown at the top, or the current directory if the project root wasn't filled in.
-- Search code files only. Every search of the project's own code uses this form (one line): `grep -rn --exclude='*.md' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
+- Search code files only. Every search of the project's own code uses this form (one line): `grep -rn <review-file-exclude-flags> --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=doc-reviews '<pattern>' "<folder>"`. Add `-E` when the pattern needs alternation (`a|b`) or other extended regex.
 - To find files by name, use `find -H` with the same `-not -path` exclusions as in step 1.
 - Symbols from an external package are checked in the installed package, never in compiled code. A symbol is from an external package when the docs import it from a package name, unless that name is the project's own: the `name` in the `package.json` at the project root, or a path alias: a `paths` entry in `tsconfig.json` or in any file it lists under `references` or `extends`, or `resolve.alias` in the Vite config if there is one (read these with Read). Those are project code; search them as usual.
   1. Check that `<project root>/node_modules/<package>` exists with `ls -ldL "<project root>/node_modules/<package>"` (a scoped package is `@scope/name`). If it doesn't, every symbol from that package is **not verifiable**, and you record "`<package>` isn't installed" as the reason.
@@ -84,7 +94,7 @@ How to search:
   6. Read `package.json` in the package folder for its `version`, and give it in the symbol's Evidence (see the `Symbols checked` rules). It's the installed version, not the range the docs support. When the declarations came from the `@types` folder, the version is that folder's, and the label is `@types/<name>@<version>` instead of `<package>@<version>`.
   7. Apply this to every external package the docs use, the same way, whatever the package is. Never read anything else in `node_modules`.
 - To check a claim beyond existence and name (import path, shape, return value, props, parameters, defaults, behaviour), open the code file with Read at the lines around the grep match. If reading the code doesn't settle a claim, that claim counts as not verifiable; the symbol's category then follows the precedence rule below.
-- To check a file path that points to a Markdown file, use `ls "<path>"` to confirm it exists. Don't open it.
+- To check a file path that points to a review file, use `ls "<path>"` to confirm it exists. Don't open it.
 - Check the files as they are on disk now, including uncommitted edits. Git history and remotes are out of scope: `git` isn't allowed, so don't try to reach them.
 
 A symbol is a name the docs say exists in code, because they show where it comes from: an import line, or prose that names it as code in this project or in an external package. A name the docs define themselves for the reader isn't a symbol, so don't check or count it. This covers a placeholder (such as a variable in an example standing for the reader's own value) and a helper the docs define in an example. A name with no import line that the docs neither define nor say exists in code (for example a hook used in an example with no import and no placeholder comment) isn't counted either. Report one Clarity finding in step 4 that lists every such name and every location where it appears: the docs don't say whether each is a placeholder or where it comes from. Don't decide this from search results.
@@ -240,7 +250,7 @@ When the checklist passes, have the `finding-verifier` agent (`doc-review:findin
 
 The report file is the record of the review, including how the run went. Always write it once step 1 has passed, even if a later step failed or you had to stop early. In that case, fill in what you have, mark the rest `not reached` in the run log, and use the `Incomplete` verdict.
 
-1. Build `<name>` from the first target as typed (before resolving it): take its last path segment, drop a `.md` extension, and replace anything that isn't a letter, digit, `-`, or `_` with `-`. For example, `docs/my-lib.md` becomes `my-lib` and `docs/` becomes `docs`. If the result is empty or only dashes (for example, the first target is `.`), use `root`. With more than one target, append `-plus-<N-1>`, where N is the number of targets: three targets starting with `docs/guides/` give `guides-plus-2`.
+1. Build `<name>` from the first target as typed (before resolving it): take its last path segment, drop the review file extension if it has one, and replace anything that isn't a letter, digit, `-`, or `_` with `-`. For example, `docs/my-lib.md` becomes `my-lib` and `docs/` becomes `docs`. If the result is empty or only dashes (for example, the first target is `.`), use `root`. With more than one target, append `-plus-<N-1>`, where N is the number of targets: three targets starting with `docs/guides/` give `guides-plus-2`.
 2. The report path is `${CLAUDE_PROJECT_DIR}/doc-reviews/agent-doc-consistency-review_<name>_${CLAUDE_SESSION_ID}.md`. If the session ID or project root at the top is empty or still shows a literal `${...}` placeholder, use `session` for the ID and `./doc-reviews/` relative to the current directory.
 3. Use `ls "<path>"` to check whether that path already exists (the same skill run twice in one session). If it does, insert `-2` before `.md`; if that exists too, try `-3`, and so on. Never overwrite an existing report.
 4. Write the report:
